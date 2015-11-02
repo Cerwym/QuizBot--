@@ -121,9 +121,7 @@ bool TwitchBot::Connect(char* IP, char* PORT, char* channel)
 	if (iResult != 0)
 	{
 		printf("getaddrinfo failed with error: %d", iResult);
-		
-		// change a false return to use TwitchBot::Cleanup()
-		WSACleanup();
+		Shutdown();
 		return false;
 	}
 
@@ -135,7 +133,7 @@ bool TwitchBot::Connect(char* IP, char* PORT, char* channel)
 		if (m_ClientSocket == INVALID_SOCKET)
 		{
 			printf("socket failed with error: %ld\n", WSAGetLastError());
-			WSACleanup();
+			Shutdown();
 			return false;
 		}
 		
@@ -161,6 +159,12 @@ bool TwitchBot::Connect(char* IP, char* PORT, char* channel)
 	SendIRCData(string((string)mAvailableIRCCommands.Pass += mPassword));
 	SendIRCData(string((string)mAvailableIRCCommands.Nick += mUsername));
 
+	// Send a message to the server indicating we want to receive membership information data as it is not sent by default
+	SendIRCData(string(mAvailableIRCCommands.TWITCH_RequestMemStateEvents));
+	// Also send a message requesting that IRC v3 tags are added to PRIVMSG, USERSTATE, NOTICE and GLOBALUSERSTATE#
+	SendIRCData(string(mAvailableIRCCommands.TWITCH_RequestTags));
+
+	// ToDo : Expand this to check if there was a message back from the server indicated failure, right now we assume a TCP connection means FULL success
 	iResult = recv(m_ClientSocket, recvbuf, recvbuflen, 0);
 	if (iResult > 0)
 	{
@@ -176,43 +180,13 @@ bool TwitchBot::Connect(char* IP, char* PORT, char* channel)
 	if (m_ClientSocket == INVALID_SOCKET)
 	{
 		printf("Unable to connect to server!\n");
-		WSACleanup();
+		Shutdown();
 		return 1;
 	}
 	
 	SendIRCData(string((string)mAvailableIRCCommands.Join += mChannel));
 
-	SendChannelMessage(mChannel, "Pete's TwitchBot Activated");
-	// Receive until the peer closes the connection
-	do {
-
-		iResult = recv(m_ClientSocket, recvbuf, recvbuflen, 0);
-		if (iResult > 0)
-		{
-			printf("Bytes received: %d\n", iResult);
-			for (int i = 0; i < iResult; i++)
-			{
-				printf("%c",recvbuf[i]);
-			}
-
-			if (recvbuf[0] == 'P' && recvbuf[1] == 'I' && recvbuf[2] == 'N' && recvbuf[3] == 'G')
-			{
-				printf("**SERVICE : Sending PONG message**");
-				SendIRCData("PONG tmi.twitch.tv");
-			}
-			printf("\n");
-		}
-		else if (iResult == 0)
-			printf("Connection closed\n");
-		else
-			printf("recv failed with error: %d\n", WSAGetLastError());
-
-	} while (iResult > 0);
-
-	// cleanup
-	closesocket(m_ClientSocket);
-	WSACleanup();
-	
+	SendChannelMessage(mChannel, "Pete's TwitchBot Activated");	
 	return true;
 }
 
@@ -272,4 +246,164 @@ bool TwitchBot::SendChannelMessage(char* channel, string message)
 	string messageToSend;
 	messageToSend += ((string)mAvailableIRCCommands.Message += channel).append(" :") += message;
 	return SendIRCData(messageToSend);
+}
+
+// Split up and parse the message sent from the server in a readable format. OPTIMIZATION NEEDED
+void TwitchBot::ParsePRIVMSG(string& data)
+{
+	// Split the data here into a container format, from here
+	// we can check if the user is a mod, if it's a command request or something else
+	PrivMsgData msgPacket;
+	int sections_read = 0;
+	bool headerDataRead = false;
+	bool messageBegun = false;
+
+	for (string::iterator it = data.begin(); it != data.end(); ++it)
+	{
+		// *it is the character code being read
+		// we want to read the data up until '=' is read, then that data is the contents we care about
+		// use a case statement, the case number is the data we will fill in 
+		if ( it != data.begin())
+		{
+			if (*((it)-1) == '=')
+			{
+				switch (sections_read)
+				{
+				case 0: // Color information
+					while ((*it) != ';')
+					{
+						msgPacket.color += (*it);
+						++it;
+					}
+					sections_read++;
+					break;
+				case 1: // Display Name
+					while ((*it) != ';')
+					{
+						msgPacket.display_name += (*it);
+						++it;
+					}
+					sections_read++;
+					break;
+				case 2: // Emotes
+					while ((*it) != ';')
+					{
+						msgPacket.emotes += (*it);
+						++it;
+					}
+					sections_read++;
+					break;
+				case 3: // Subscriber
+					while ((*it) != ';')
+					{
+						msgPacket.isSub = atoi(&(*it));
+						++it;
+					}
+					sections_read++;
+					break;
+				case 4: // Turbo
+					while ((*it) != ';')
+					{
+						msgPacket.isTurbo = atoi(&(*it));
+						++it;
+					}
+					sections_read++;
+					break;
+				case 5: // UserID
+					while ((*it) != ';')
+					{
+						msgPacket.userID += (*it);
+						++it;
+					}
+					sections_read++;
+					break;
+				case 6: // user type
+					while ((*it) != ' ') // this tag does not end with ';'
+					{
+						msgPacket.user_type += (*it);
+						++it;
+					}
+					sections_read++;
+					break;
+				}
+			}
+
+			// Read in the channel
+			else if (*((it)-1) == '#')
+			{
+				while ((*it) != ' ')
+				{
+					msgPacket.channel += (*it);
+					++it;
+				}
+				headerDataRead = true;
+			}
+		}
+		
+		// Finally, when we reach the : token, copy the message in
+		if (headerDataRead == true)
+		{
+			if (*((it) - 1) == ':')
+				messageBegun = true;
+		}
+
+		if (messageBegun == true)
+		{
+			// do an AND comparison check to see if any of the characters are not a control code, if the result is a pass, continue with copying message in to contents
+			if (  ((*it) != '\n') && ((*it) != '\r') == true) 
+			{
+				msgPacket.mesageContents += (*it);
+			}		
+		}
+	}
+
+	// Temporary output information.
+	printf("USER > %s : %s\n", msgPacket.display_name.c_str(), msgPacket.mesageContents.c_str());
+}
+
+void TwitchBot::Run()
+{
+	char recvbuf[4096];
+	int iResult;
+	int recvbuflen = 4096;
+
+	// Thread this section
+
+	// Receive until the peer closes the connection
+	do {
+
+		iResult = recv(m_ClientSocket, recvbuf, recvbuflen, 0);
+		if (iResult > 0)
+		{
+			// If the server sends a ping message, send a PONG message back.
+			if (recvbuf[0] == 'P' && recvbuf[1] == 'I' && recvbuf[2] == 'N' && recvbuf[3] == 'G')
+			{
+				printf("**SERVICE : Sending PONG message**");
+				SendIRCData("PONG tmi.twitch.tv");
+			}
+			// Check to see if the first character is @ as currently, we are requesting IRCV3 tags to be sent along with a message
+			else if (recvbuf[0] == '@')
+			{
+				// Convert this data in to a string, pass in iResult as the length of the new string otherwise we'd get garbage data from the size of the buffer
+				ParsePRIVMSG(string(recvbuf, iResult));
+			}
+			else
+			{
+				printf("Bytes received: %d\n", iResult);
+				printf("Not handling this message...\n");
+			}		
+		}
+		else if (iResult == 0)
+			printf("Connection closed\n");
+		else
+			printf("recv failed with error: %d\n", WSAGetLastError());
+
+	} while (iResult > 0);
+}
+
+void TwitchBot::Shutdown()
+{
+	printf("Shutting Down...\n");
+	closesocket(m_ClientSocket);
+	WSACleanup();
 }

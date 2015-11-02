@@ -13,5 +13,7 @@ int main()
 {
 	TwitchBot mBot("login.cfg");
 	mBot.Connect("irc.twitch.tv", "6667", "#cerwym");
+	mBot.Run();
+	mBot.Shutdown();
 	return 0;
 }
