@@ -77,9 +77,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="QuizModule.cpp" />
     <ClCompile Include="TwitchBot.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="QuizModule.h" />
     <ClInclude Include="TwitchBot.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

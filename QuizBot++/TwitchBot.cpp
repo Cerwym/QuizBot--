@@ -1,6 +1,7 @@
 #include "TwitchBot.h"
 #include <fstream>
-#include <string>
+
+using namespace BotCore;
 
 TwitchBot::TwitchBot(char* USERNAME, char* OAUTHTOKEN)
 {
@@ -10,6 +11,16 @@ TwitchBot::TwitchBot(char* USERNAME, char* OAUTHTOKEN)
 	mIsInitialized = true;
 	printf("Bot Initialized\n");
 }
+
+TwitchBot::TwitchBot(char* USERNAME, char* OAUTHTOKEN, int flags)
+{
+	mUsername = USERNAME;
+	mPassword = OAUTHTOKEN;
+
+	EvaluateConstructorFlags(flags);
+	mIsInitialized = true;
+}
+
 
 // Initialize the object by passing in a configuration file, containing relevant data
 TwitchBot::TwitchBot(char* configfile)
@@ -23,6 +34,21 @@ TwitchBot::TwitchBot(char* configfile)
 	}
 }
 
+// Initialize the object by passing in a configuration file, containing relevant data AND modules wanted at runtime
+TwitchBot::TwitchBot(char* configfile, int flags)
+{
+	// Load the modules first.
+	EvaluateConstructorFlags(flags);
+
+	if (ReadLoginFile(configfile))
+		mIsInitialized = true;
+	else
+	{
+		printf("ERROR : Invalid Configuration Data\n");
+		mIsInitialized = false;
+	}
+}
+
 TwitchBot::~TwitchBot()
 {
 	// Free the associated memory we assigned with calloc() calls
@@ -31,6 +57,31 @@ TwitchBot::~TwitchBot()
 
 	if (mPassword!= NULL)
 		free(mPassword);
+
+	if (mQuizModule != 0)
+	{
+		delete mQuizModule;
+		mQuizModule = 0;
+	}
+}
+
+void TwitchBot::EvaluateConstructorFlags(int flags)
+{
+	if (flags & ConstructorFlags::QuizBot)
+	{
+		// This needs to be changed to create a new singleton rather than instantiate an object.
+		mQuizModule = new QuizModule();
+	}
+
+	if (flags & ConstructorFlags::CollectionBot)
+	{
+		printf("No object created but sod it, this is a test step\n");
+	}
+
+	if (flags & ConstructorFlags::StubBot)
+	{
+		printf("My name is stubby because I'm a stub\n");
+	}
 }
 
 bool TwitchBot::ReadLoginFile(char* configfile)
@@ -90,6 +141,8 @@ bool TwitchBot::Connect(char* IP, char* PORT, char* channel)
 	// There is no point in proceeding if the bot failed initialization
 	if (!mIsInitialized)
 		return false;
+	else
+		printf("TwitchBot Initialized\n");
 
 	char recvbuf[4096];
 	int iResult;
@@ -353,12 +406,38 @@ void TwitchBot::ParsePRIVMSG(string& data)
 			if (  ((*it) != '\n') && ((*it) != '\r') == true) 
 			{
 				msgPacket.mesageContents += (*it);
-			}		
+			}
+
+			if ((*it) - 1 == ':')
+			if (*((it) - 1) == ':')
 		}
 	}
 
-	// Temporary output information.
-	printf("USER > %s : %s\n", msgPacket.display_name.c_str(), msgPacket.mesageContents.c_str());
+	// if message begins with ! check to see if any bots have registered a command to listen to, for now QB is the only module so we should not try and pre-optimized
+
+	if (msgPacket.mesageContents.find("!qb hello") != string::npos)
+	{
+		if (msgPacket.user_type == "mod" || "admin")
+		{
+			SendChannelMessage(mChannel, string("Hello Admin, ") += msgPacket.display_name);
+		}
+	}
+
+	// OH MY GOD IS THIS TEMPORARY
+	if (msgPacket.mesageContents.find("!qb shutdown") != string::npos)
+	{
+		if (msgPacket.user_type == "mod" || "admin")
+		{
+			SendChannelMessage(mChannel, string("Goodbye Cruel World, ") += msgPacket.display_name += string(" hath slain me!"));
+			mIsInLoop = false;
+		}
+	}
+
+	if (msgPacket.mesageContents.find("!quiz start") != string::npos)
+	{
+		if (mQuizModule != NULL)
+			mQuizModule->Start("fallout", msgPacket.user_type, 60);
+	}
 }
 
 void TwitchBot::Run()
@@ -375,10 +454,11 @@ void TwitchBot::Run()
 		iResult = recv(m_ClientSocket, recvbuf, recvbuflen, 0);
 		if (iResult > 0)
 		{
+			mIsInLoop = true;
 			// If the server sends a ping message, send a PONG message back.
 			if (recvbuf[0] == 'P' && recvbuf[1] == 'I' && recvbuf[2] == 'N' && recvbuf[3] == 'G')
 			{
-				printf("**SERVICE : Sending PONG message**");
+				printf("**SERVICE : Sending PONG message**\n");
 				SendIRCData("PONG tmi.twitch.tv");
 			}
 			// Check to see if the first character is @ as currently, we are requesting IRCV3 tags to be sent along with a message
@@ -394,11 +474,14 @@ void TwitchBot::Run()
 			}		
 		}
 		else if (iResult == 0)
+		{
 			printf("Connection closed\n");
+			mIsInLoop = 0;
+		}
 		else
 			printf("recv failed with error: %d\n", WSAGetLastError());
 
-	} while (iResult > 0);
+	} while (mIsInLoop == true);
 }
 
 void TwitchBot::Shutdown()

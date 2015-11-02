@@ -6,12 +6,13 @@
 #pragma comment (lib, "Mswsock.lib")
 #pragma comment (lib, "AdvApi32.lib")
 
-
 #include "TwitchBot.h"
+
+using namespace BotCore;
 
 int main()
 {
-	TwitchBot mBot("login.cfg");
+	TwitchBot mBot("login.cfg", ConstructorFlags::QuizBot | ConstructorFlags::CollectionBot | ConstructorFlags::StubBot);
 	mBot.Connect("irc.twitch.tv", "6667", "#cerwym");
 	mBot.Run();
 	mBot.Shutdown();
