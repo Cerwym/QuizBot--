@@ -5,36 +5,39 @@
 
 using namespace BotCore;
 
+void ReadDataOnSocket(void* ownerPtr, SOCKET* serverSocket);
+
 TwitchBot::TwitchBot(char* USERNAME, char* OAUTHTOKEN)
 {
+	mQuizModule = 0;
 	mUsername = USERNAME;
 	mPassword = OAUTHTOKEN;
-	mQuizModule = 0;
 	mIsInitialized = true;
 	printf("Bot Initialized\n");
 }
 
 TwitchBot::TwitchBot(char* USERNAME, char* OAUTHTOKEN, int flags)
 {
+	mQuizModule = 0;
 	mUsername = USERNAME;
 	mPassword = OAUTHTOKEN;
-	mQuizModule = 0;
 	EvaluateConstructorFlags(flags);
 	mIsInitialized = true;
 }
 
-
 // Initialize the object by passing in a configuration file, containing relevant data
 TwitchBot::TwitchBot(char* configfile)
 {
+	mQuizModule = 0;
 	if (ReadLoginFile(configfile))
+	{
 		mIsInitialized = true;
+	}
 	else
 	{	
 		printf("ERROR : Invalid Configuration Data\n");
 		mIsInitialized = false;
 	}
-	mQuizModule = 0;
 }
 
 // Initialize the object by passing in a configuration file, containing relevant data AND modules wanted at runtime
@@ -45,7 +48,9 @@ TwitchBot::TwitchBot(char* configfile, int flags)
 	EvaluateConstructorFlags(flags);
 
 	if (ReadLoginFile(configfile))
+	{
 		mIsInitialized = true;
+	}
 	else
 	{
 		printf("ERROR : Invalid Configuration Data\n");
@@ -63,6 +68,18 @@ TwitchBot::~TwitchBot()
 		free(mPassword);
 }
 
+void TwitchBot::InitMessageQueue()
+{
+	// Initialize the 'queue' system.
+	mNetworkMessageQueue = new QueueT[MAX_QUEUE_SIZE];
+
+	mNextQueueLocation = 0;
+	mNextMessageToProcess = 0;
+
+	for (int i = 0; i < MAX_QUEUE_SIZE; i++)
+		mNetworkMessageQueue[i].active = false;
+}
+
 void TwitchBot::EvaluateConstructorFlags(int flags)
 {
 	if (flags & ConstructorFlags::QuizBot)
@@ -70,6 +87,7 @@ void TwitchBot::EvaluateConstructorFlags(int flags)
 		// This needs to be changed to create a new singleton rather than instantiate an object.
 		mQuizModule = new QuizModule();
 		mQuizModule->Init();
+		mActiveBotModules.push_back(mQuizModule);
 	}
 
 	if (flags & ConstructorFlags::CollectionBot)
@@ -136,7 +154,6 @@ bool TwitchBot::ReadLoginFile(char* configfile)
 
 bool TwitchBot::Connect(char* IP, char* PORT, char* channel)
 {	
-	
 	// There is no point in proceeding if the bot failed initialization
 	if (!mIsInitialized)
 		return false;
@@ -155,12 +172,16 @@ bool TwitchBot::Connect(char* IP, char* PORT, char* channel)
 	}
 
 	// Create a socket to the server
-	m_ClientSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_TCP);
+	m_ClientSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (!m_ClientSocket)
 	{
 		printf("Failure creating client socket\n");
 		return false;
 	}
+
+	mSocketMode = 0;
+	// Set the socket to block on recv() sommands
+	ioctlsocket(m_ClientSocket, FIONBIO, &mSocketMode);
 
 	ZeroMemory(&hints, sizeof(hints));
 	hints.ai_family = AF_INET;
@@ -205,6 +226,7 @@ bool TwitchBot::Connect(char* IP, char* PORT, char* channel)
 
 	// All we are testing if we have made a TCP connection to the server.
 	mIsConnected = true;
+	InitMessageQueue();
 	printf("Connected to server!\n");
 
 	// To connect to the Twitch servers, the protocol expects the PASS followed by name
@@ -217,6 +239,7 @@ bool TwitchBot::Connect(char* IP, char* PORT, char* channel)
 	SendIRCData(string(mAvailableIRCCommands.TWITCH_RequestTags));
 
 	// ToDo : Expand this to check if there was a message back from the server indicated failure, right now we assume a TCP connection means FULL success
+	
 	iResult = recv(m_ClientSocket, recvbuf, recvbuflen, 0);
 	if (iResult > 0)
 	{
@@ -226,6 +249,8 @@ bool TwitchBot::Connect(char* IP, char* PORT, char* channel)
 				printf("%c", recvbuf[i]);
 		}
 	}
+
+	memset(recvbuf, 0, recvbuflen);
 
 	freeaddrinfo(result);
 
@@ -237,41 +262,23 @@ bool TwitchBot::Connect(char* IP, char* PORT, char* channel)
 	}
 	
 	SendIRCData(string((string)mAvailableIRCCommands.Join += mChannel));
-
 	SendChannelMessage(mChannel, "Pete's TwitchBot Activated");
+
+	mReadingThread = std::thread(&ReadDataOnSocket, (void*)this, &m_ClientSocket);
 	return true;
 }
 
 bool TwitchBot::InitWinSock()
 {
 	WSADATA SocketData;
-	WSAPROTOCOL_INFOW* protocolBuffer;
-	unsigned long bufferSize;
-	int protocols[2];
 
 	int error = WSAStartup(0x0202, &SocketData);
 	if (error != 0)
 	{
 		// Handle WSAStartup Error
+		printf("InitWinSock() Failed with error code %d\n", WSAGetLastError());
+		return false;
 	}
-
-	// Request the buffer size needed for holding the available protocols
-	WSAEnumProtocols(NULL, NULL, &bufferSize);
-
-	// Create a buffer for the protocol information structures
-	protocolBuffer = new WSAPROTOCOL_INFOW[bufferSize];
-	if (!protocolBuffer)
-		return false;
-
-	protocols[0] = IPPROTO_TCP;
-	protocols[1] = IPPROTO_UDP;
-
-	error = WSAEnumProtocols(protocols, protocolBuffer, &bufferSize);
-	if (error == SOCKET_ERROR)
-		return false;
-
-	delete[] protocolBuffer;
-	protocolBuffer = 0;
 
 	printf("WinSock initialized successfully\n");
 	return true;
@@ -285,6 +292,7 @@ bool TwitchBot::SendIRCData(string messagedata)
 		messagedata.append("\n");
 
 	int bytes_sent = send(m_ClientSocket, messagedata.c_str(), messagedata.length(), NULL);
+	//int bytes_sent = send(m_ClientSocket, messagedata.c_str(), messagedata.length(), NULL);
 
 	if (bytes_sent == 0)
 	{
@@ -445,7 +453,7 @@ void TwitchBot::ParseBotCommandMessage(PrivMsgData &data)
 	}
 
 	// OH MY GOD IS THIS TEMPORARY
-	if (data.mesageContents.find("!qb shutdown") != string::npos)
+	else if (data.mesageContents.find("!qb shutdown") != string::npos)
 	{
 		if (data.user_type == "mod" || data.user_type == "admin")
 		{
@@ -457,17 +465,22 @@ void TwitchBot::ParseBotCommandMessage(PrivMsgData &data)
 		}
 	}
 
-	if (data.mesageContents.find("!quiz start") != string::npos)
+	else if (data.mesageContents.find("!quiz start") != string::npos)
 	{
+		// Refactor this, and all modules into something more maintainable
 		if (mQuizModule == NULL)
+		{
 			mQuizModule = new QuizModule;
+			mActiveBotModules.push_back(mQuizModule);
+		}
 
 		// temporary 
 		int roundTime = 60;
+		int numQuestions = 10;
 		stringstream ss;
 
 		// change the parameter start to be whatever the name is that was passed in twitch chat
-		if (mQuizModule->Start("fallout.txt", data.user_type, roundTime))
+		if (mQuizModule->Start("fallout.txt", data.user_type, numQuestions, roundTime))
 		{
 			ss << data.display_name << " has started a quiz, you will have " << roundTime << " seconds to answer a question, Good Luck!";
 			
@@ -476,50 +489,70 @@ void TwitchBot::ParseBotCommandMessage(PrivMsgData &data)
 
 		// perhaps if this fails, we could print out the available questions sets.
 	}
+	else if (data.mesageContents.find("!quiz pause") != string::npos)
+	{
+		if (data.user_type == "mod" || data.user_type == "admin")
+		{
+			if (mQuizModule->IsGameRunning())
+				mQuizModule->Pause();
+		}
+	}
+	else if (data.mesageContents.find("!quiz resume") != string::npos)
+	{
+		if (data.user_type == "mod" || data.user_type == "admin")
+		{
+			if (!mQuizModule->IsGameRunning())
+				mQuizModule->Resume(false);
+		}
+	}
 }
 
 void TwitchBot::Run()
 {
-	char recvbuf[4096];
-	int iResult;
-	int recvbuflen = 4096;
-
-	// Thread this section
-
 	// Receive until the peer closes the connection
 	do {
-
-		iResult = recv(m_ClientSocket, recvbuf, recvbuflen, 0);
-		if (iResult > 0)
-		{
-			mIsInLoop = true;
-			// If the server sends a ping message, send a PONG message back.
-			if (recvbuf[0] == 'P' && recvbuf[1] == 'I' && recvbuf[2] == 'N' && recvbuf[3] == 'G')
-			{
-				printf("**SERVICE : Sending PONG message**\n");
-				SendIRCData("PONG tmi.twitch.tv");
-			}
-			// Check to see if the first character is @ as currently, we are requesting IRCV3 tags to be sent along with a message
-			else if (recvbuf[0] == '@')
-			{
-				// Convert this data in to a string, pass in iResult as the length of the new string otherwise we'd get garbage data from the size of the buffer
-				ParsePRIVMSG(string(recvbuf, iResult));
-			}
-			else
-			{
-				printf("Bytes received: %d\n", iResult);
-				printf("Not handling this message...\n");
-			}		
-		}
-		else if (iResult == 0)
-		{
-			printf("Connection closed\n");
-			mIsInLoop = 0;
-		}
-		else
-			printf("recv failed with error: %d\n", WSAGetLastError());
-
+		
+		ProcessMessageQueue();
+		UpdateModules();
+		Sleep(16); // sleep for 16 milliseconds so we don't destroy the CPU, this isn't an intensive application
 	} while (mIsInLoop == true);
+}
+
+void TwitchBot::ToggleBlockingSocket(bool setToNonBlock)
+{
+	// check whether or not the socket we are listening on is blocking, if it is and we must switch to asynchronous IO, switch.
+	// if no registered modules require non-blocking, toggle it back on.
+	int socketError = 0;
+	
+	if (mSocketMode == 0 && setToNonBlock == true)
+	{
+		mSocketMode = 1;
+		socketError = ioctlsocket(mSocketMode, FIONBIO, &mSocketMode);
+		printf("DEBUG : SocketMode set to NONBLOCKING\n");
+		return;
+	}
+	else if (mSocketMode == 1 && setToNonBlock == false)
+	{
+		mSocketMode = 0;
+		socketError = ioctlsocket(mSocketMode, FIONBIO, &mSocketMode);
+		printf("DEBUG : SocketMode set to BLOCKING\n");
+		return;
+	}
+
+	if (socketError != 0)
+		printf("Toggle failed with code %d\n", WSAGetLastError());
+}
+
+// Update Bot Modules
+void TwitchBot::UpdateModules()
+{
+	for (vector<BotModule*>::iterator it = mActiveBotModules.begin(); it < mActiveBotModules.end(); ++it)
+	{
+		if ((*it)->MustRunEveryFrame())
+		{
+			(*it)->Update();
+		}
+	}
 }
 
 void TwitchBot::Shutdown()
@@ -531,4 +564,89 @@ void TwitchBot::Shutdown()
 
 	closesocket(m_ClientSocket);
 	WSACleanup();
+
+	mIsConnected = false;
+	mReadingThread.join();
 }
+
+void TwitchBot::ReadNetworkMessage(string& readMessage)
+{
+	AddMessageToQueue(readMessage);
+}
+
+void TwitchBot::AddMessageToQueue(string& message)
+{
+	mNetworkMessageQueue[mNextQueueLocation].messageData = message;
+	
+	// Set active last so that racing conditions in processing the queue do not occur.
+	mNetworkMessageQueue[mNextQueueLocation].active = true;
+
+	mNextQueueLocation++;
+	if (mNextQueueLocation == MAX_QUEUE_SIZE)
+		mNextQueueLocation = 0;
+}
+
+void TwitchBot::ProcessMessageQueue()
+{
+	// loop through all the active unprocessed messages in the queue.
+	while (mNetworkMessageQueue[mNextMessageToProcess].active == true)
+	{
+		// coerce
+		string message = mNetworkMessageQueue[mNextMessageToProcess].messageData;
+
+		// set the message as processed.
+		mNetworkMessageQueue[mNextMessageToProcess].active = false;
+
+		// Parse block
+		std::stringstream checkPong;
+
+		for (int i = 0; i > 4; i++)
+		{
+			checkPong << message[i];
+		}
+
+		if (checkPong.str() == "PING")
+		{
+			printf("**SERVICE : Sending PONG message**\n");
+			SendIRCData("PONG tmi.twitch.tv");
+		}
+		// Check to see if the first character is @ as currently, we are requesting IRCV3 tags to be sent along with a message
+		else if (message[0] == '@')
+		{
+			// Convert this data in to a string, pass in iResult as the length of the new string otherwise we'd get garbage data from the size of the buffer
+			ParsePRIVMSG(message);
+		}
+		else
+		{
+			printf("Bytes received: %d\n", message.length());
+			printf("Not handling this message...\n");
+		}
+
+		mNextMessageToProcess++;
+		if (mNextMessageToProcess == MAX_QUEUE_SIZE)
+			mNextMessageToProcess = 0;
+	}
+}
+
+void ReadDataOnSocket(void* ownerPtr, SOCKET* serverSocket)
+{
+	TwitchBot* ClassPtr;
+	char recvBuffer[4096];
+	int bytesRead;
+
+	ClassPtr = (TwitchBot*)ownerPtr;
+	ClassPtr->SetThreadState(true);
+
+	while (ClassPtr->IsConnected())
+	{
+		// Check to see if there is a message from the server
+		bytesRead = recv(*serverSocket, recvBuffer, 4096, NULL);
+		if (bytesRead > 0)
+		{
+			// just convert it to a string, why deal with char*?
+			string data(recvBuffer, bytesRead);
+			ClassPtr->ReadNetworkMessage(data);
+		}
+	}
+}
+

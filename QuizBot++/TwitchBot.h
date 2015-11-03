@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <WinSock2.h>
 #include <WS2tcpip.h>
+#include <thread>
 
 // Modules
 #include "QuizModule.h"
@@ -36,7 +37,10 @@ namespace BotCore
 		bool Connect(char* IP, char* PORT, char* channel);
 		bool IsConnected() { return mIsConnected; }
 		void Run();
+		void UpdateModules();
 		void Shutdown();
+		void ReadNetworkMessage(string& readMessage);
+		void SetThreadState(bool state){ mReadThreadActive = state; }
 
 	private:
 
@@ -53,14 +57,26 @@ namespace BotCore
 			string mesageContents = "";
 		};
 
-		void EvaluateConstructorFlags(int flags);
+		struct QueueT
+		{
+			bool active;
+			struct sockaddr_in address;
+			string messageData;
+		};
 
+		void EvaluateConstructorFlags(int flags);
 		bool ReadLoginFile(char* file);
+		
 		bool InitWinSock();
+		void InitMessageQueue();
 		bool SendIRCData(string messagedata);
 		bool SendChannelMessage(char* channel, string message);
 		void ParsePRIVMSG(string& data);
 		void ParseBotCommandMessage(PrivMsgData &data);
+
+		void ToggleBlockingSocket(bool shouldBlock);
+		void AddMessageToQueue(string& message);
+		void ProcessMessageQueue();
 
 		char* mUsername = NULL;
 		char* mPassword = NULL;
@@ -73,9 +89,18 @@ namespace BotCore
 			hints;
 
 		SOCKET m_ClientSocket = INVALID_SOCKET;
+		// flag to store the I/O mode of the socket. 0 = BLOCKING, 1 = NONBLOCKING
+		u_long mSocketMode;
 		int mAddressLength;
 		bool mIsInitialized = false;
 		bool mIsConnected = false;
+		bool mReadThreadActive = false;
+		thread mReadingThread;
+		QueueT* mNetworkMessageQueue;
+		int mNextQueueLocation, mNextMessageToProcess;
+		const int MAX_QUEUE_SIZE = 200;
+		
+		bool mSocketEnableBlocking = true;
 
 		const enum USERFLAG
 		{
@@ -96,6 +121,9 @@ namespace BotCore
 
 		// Temporary
 		bool mIsInLoop = 1;
+
 		QuizModule* mQuizModule;
+		vector<BotModule*> mActiveBotModules;
+		bool mHasModuleToUpdate = false;
 	};
 }

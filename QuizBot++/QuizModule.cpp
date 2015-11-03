@@ -3,10 +3,10 @@
 #include <fstream>
 #include <sstream>
 
-
 QuizModule::QuizModule()
 {
 	mModuleName = "Quiz Module";
+	mIsGameRunning = false;
 }
 
 QuizModule::~QuizModule()
@@ -39,20 +39,58 @@ void QuizModule::Shutdown()
 	printf("Shutting down Quizbot...\n");
 }
 
-bool QuizModule::Start(const std::string& questionset, const std::string& userType, const int& roundTime)
+bool QuizModule::Start(const std::string& questionset, const std::string& userType, const int& numOfQuestions, const int& roundTime)
 {
 	bool success = false;
 
 	if (!mHasInitializedSuccessfully)
 		success = Init();
-
-	if (userType == "mod" || userType == "admin")
+	if (mIsGameRunning == false)
 	{
-		success = ReadQuestionFile(questionset);
-		mRoundTime = roundTime;
+		if (userType == "mod" || userType == "admin")
+		{
+			success = ReadQuestionFile(questionset);
+			mRoundTime = roundTime;
+			mTimeAtRoundStart = steady_clock::now();
+			mIsGameRunning = success;
+			mMustRunEveryFrame = true;
+		}
 	}
+	else
+		printf("An attempt to start a quiz was made while one was already running, ignoring...\n");
 
 	return success;
+}
+
+void QuizModule::Pause()
+{
+	mIsGameRunning = false;
+	mMustRunEveryFrame = false;
+}
+
+void QuizModule::Resume(bool resetRoundTime)
+{
+	// If the param is true, reset the active round time
+	mIsGameRunning = false;
+	mMustRunEveryFrame = false;
+}
+
+void QuizModule::Update()
+{
+	if (mIsGameRunning)
+	{
+		// What question are we on...
+		// How long left till the end of the next round...
+	
+		steady_clock::time_point currentlyElapsed = steady_clock::now();
+		mElapsedRoundTime = duration_cast<duration<double>>(currentlyElapsed - mTimeAtRoundStart);
+		printf("Elapsed Time... %f", mElapsedRoundTime);
+		if (mElapsedRoundTime.count() >= mRoundTime)
+		{
+			// Ask a new question.
+			//printf("Round time finished\n");
+		}
+	}
 }
 
 void QuizModule::ParseAnswer(const std::string& answerData)
