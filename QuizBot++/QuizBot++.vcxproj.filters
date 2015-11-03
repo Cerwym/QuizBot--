@@ -24,12 +24,18 @@
     <ClCompile Include="QuizModule.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="BotModule.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="TwitchBot.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="QuizModule.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="BotModule.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

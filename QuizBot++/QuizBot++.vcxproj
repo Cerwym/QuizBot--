@@ -76,11 +76,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="BotModule.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="QuizModule.cpp" />
     <ClCompile Include="TwitchBot.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="BotModule.h" />
     <ClInclude Include="QuizModule.h" />
     <ClInclude Include="TwitchBot.h" />
   </ItemGroup>

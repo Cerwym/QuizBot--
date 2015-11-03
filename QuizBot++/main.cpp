@@ -12,7 +12,7 @@ using namespace BotCore;
 
 int main()
 {
-	TwitchBot mBot("login.cfg", ConstructorFlags::QuizBot | ConstructorFlags::CollectionBot | ConstructorFlags::StubBot);
+	TwitchBot mBot("login.cfg", ConstructorFlags::CollectionBot | ConstructorFlags::StubBot);
 	mBot.Connect("irc.twitch.tv", "6667", "#cerwym");
 	mBot.Run();
 	mBot.Shutdown();

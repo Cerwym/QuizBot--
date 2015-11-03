@@ -1,5 +1,7 @@
 #include "TwitchBot.h"
+#include <sstream>
 #include <fstream>
+#include <iosfwd>
 
 using namespace BotCore;
 
@@ -7,7 +9,7 @@ TwitchBot::TwitchBot(char* USERNAME, char* OAUTHTOKEN)
 {
 	mUsername = USERNAME;
 	mPassword = OAUTHTOKEN;
-
+	mQuizModule = 0;
 	mIsInitialized = true;
 	printf("Bot Initialized\n");
 }
@@ -16,7 +18,7 @@ TwitchBot::TwitchBot(char* USERNAME, char* OAUTHTOKEN, int flags)
 {
 	mUsername = USERNAME;
 	mPassword = OAUTHTOKEN;
-
+	mQuizModule = 0;
 	EvaluateConstructorFlags(flags);
 	mIsInitialized = true;
 }
@@ -32,11 +34,13 @@ TwitchBot::TwitchBot(char* configfile)
 		printf("ERROR : Invalid Configuration Data\n");
 		mIsInitialized = false;
 	}
+	mQuizModule = 0;
 }
 
 // Initialize the object by passing in a configuration file, containing relevant data AND modules wanted at runtime
 TwitchBot::TwitchBot(char* configfile, int flags)
 {
+	mQuizModule = 0;
 	// Load the modules first.
 	EvaluateConstructorFlags(flags);
 
@@ -57,12 +61,6 @@ TwitchBot::~TwitchBot()
 
 	if (mPassword!= NULL)
 		free(mPassword);
-
-	if (mQuizModule != 0)
-	{
-		delete mQuizModule;
-		mQuizModule = 0;
-	}
 }
 
 void TwitchBot::EvaluateConstructorFlags(int flags)
@@ -71,6 +69,7 @@ void TwitchBot::EvaluateConstructorFlags(int flags)
 	{
 		// This needs to be changed to create a new singleton rather than instantiate an object.
 		mQuizModule = new QuizModule();
+		mQuizModule->Init();
 	}
 
 	if (flags & ConstructorFlags::CollectionBot)
@@ -239,7 +238,7 @@ bool TwitchBot::Connect(char* IP, char* PORT, char* channel)
 	
 	SendIRCData(string((string)mAvailableIRCCommands.Join += mChannel));
 
-	SendChannelMessage(mChannel, "Pete's TwitchBot Activated");	
+	SendChannelMessage(mChannel, "Pete's TwitchBot Activated");
 	return true;
 }
 
@@ -278,10 +277,12 @@ bool TwitchBot::InitWinSock()
 	return true;
 }
 
-// Send a string to the client socket. WARNING : a '\n' character code will be appended to this message
+// Send a string to the client socket
 bool TwitchBot::SendIRCData(string messagedata)
 {
-	messagedata.append("\n");
+	// It makes sense to perform a user-error check here, in order for the message to be sent correctly, the data MUST end in a \n escape sequence.
+	if (messagedata[messagedata.length() - 1] != '\n')
+		messagedata.append("\n");
 
 	int bytes_sent = send(m_ClientSocket, messagedata.c_str(), messagedata.length(), NULL);
 
@@ -294,6 +295,7 @@ bool TwitchBot::SendIRCData(string messagedata)
 	return true;
 }
 
+// Send a message to the requested channel
 bool TwitchBot::SendChannelMessage(char* channel, string message)
 {
 	string messageToSend;
@@ -407,36 +409,72 @@ void TwitchBot::ParsePRIVMSG(string& data)
 			{
 				msgPacket.mesageContents += (*it);
 			}
-
-			if ((*it) - 1 == ':')
-			if (*((it) - 1) == ':')
 		}
 	}
-
-	// if message begins with ! check to see if any bots have registered a command to listen to, for now QB is the only module so we should not try and pre-optimized
-
-	if (msgPacket.mesageContents.find("!qb hello") != string::npos)
+	
+	// if message begins with ! check to see if any bots have registered a command to listen to
+	if (msgPacket.mesageContents[0] == '!')
 	{
-		if (msgPacket.user_type == "mod" || "admin")
+		ParseBotCommandMessage(msgPacket);
+	}
+
+	else if (mQuizModule != 0)
+	{
+		if (mQuizModule->IsInitialized())
 		{
-			SendChannelMessage(mChannel, string("Hello Admin, ") += msgPacket.display_name);
+			mQuizModule->ParseAnswer(data);
+		}
+	}
+	// Check to see if quizbot is running so that we can parse the message as an answer, if it's NOT running then proccess message as a command message
+}
+
+//for now QB is the only module so we should not try and pre - optimized
+void TwitchBot::ParseBotCommandMessage(PrivMsgData &data)
+{
+	if (data.mesageContents.find("!qb hello") != string::npos)
+	{
+		if (data.user_type == "mod" || data.user_type == "admin")
+		{
+			SendChannelMessage(mChannel, string("Hello Admin, ") += data.display_name);
+		}
+
+		else
+		{
+			SendChannelMessage(mChannel, string("Eugh... Hello NORMAL user, ") += data.display_name);
 		}
 	}
 
 	// OH MY GOD IS THIS TEMPORARY
-	if (msgPacket.mesageContents.find("!qb shutdown") != string::npos)
+	if (data.mesageContents.find("!qb shutdown") != string::npos)
 	{
-		if (msgPacket.user_type == "mod" || "admin")
+		if (data.user_type == "mod" || data.user_type == "admin")
 		{
-			SendChannelMessage(mChannel, string("Goodbye Cruel World, ") += msgPacket.display_name += string(" hath slain me!"));
+			stringstream ss;
+			ss << "Goodbye Cruel World, " << data.display_name << " hath slain me!";
+			
+			SendChannelMessage(mChannel, ss.str());
 			mIsInLoop = false;
 		}
 	}
 
-	if (msgPacket.mesageContents.find("!quiz start") != string::npos)
+	if (data.mesageContents.find("!quiz start") != string::npos)
 	{
-		if (mQuizModule != NULL)
-			mQuizModule->Start("fallout", msgPacket.user_type, 60);
+		if (mQuizModule == NULL)
+			mQuizModule = new QuizModule;
+
+		// temporary 
+		int roundTime = 60;
+		stringstream ss;
+
+		// change the parameter start to be whatever the name is that was passed in twitch chat
+		if (mQuizModule->Start("fallout.txt", data.user_type, roundTime))
+		{
+			ss << data.display_name << " has started a quiz, you will have " << roundTime << " seconds to answer a question, Good Luck!";
+			
+			SendChannelMessage(mChannel, ss.str());
+		}
+
+		// perhaps if this fails, we could print out the available questions sets.
 	}
 }
 
@@ -487,6 +525,10 @@ void TwitchBot::Run()
 void TwitchBot::Shutdown()
 {
 	printf("Shutting Down...\n");
+	
+	if (mQuizModule != 0)
+		mQuizModule->Shutdown();
+
 	closesocket(m_ClientSocket);
 	WSACleanup();
 }

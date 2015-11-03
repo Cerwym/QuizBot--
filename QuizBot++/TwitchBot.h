@@ -40,6 +40,19 @@ namespace BotCore
 
 	private:
 
+		struct PrivMsgData
+		{
+			string color = "";
+			string display_name = "";
+			string emotes = "";
+			int isSub = 0;
+			int isTurbo = 0;
+			string userID = "";
+			string user_type = "";
+			string channel = "";
+			string mesageContents = "";
+		};
+
 		void EvaluateConstructorFlags(int flags);
 
 		bool ReadLoginFile(char* file);
@@ -47,6 +60,7 @@ namespace BotCore
 		bool SendIRCData(string messagedata);
 		bool SendChannelMessage(char* channel, string message);
 		void ParsePRIVMSG(string& data);
+		void ParseBotCommandMessage(PrivMsgData &data);
 
 		char* mUsername = NULL;
 		char* mPassword = NULL;
@@ -78,23 +92,10 @@ namespace BotCore
 			const string TWITCH_RequestTags = "CAP REQ :twitch.tv/tags";
 		};
 
-		struct PrivMsgData
-		{
-			string color = "";
-			string display_name = "";
-			string emotes = "";
-			int isSub = 0;
-			int isTurbo = 0;
-			string userID = "";
-			string user_type = "";
-			string channel = "";
-			string mesageContents = "";
-		};
-
 		IRC_COMMANDS mAvailableIRCCommands;
 
 		// Temporary
-		QuizModule* mQuizModule = 0;
 		bool mIsInLoop = 1;
+		QuizModule* mQuizModule;
 	};
 }
