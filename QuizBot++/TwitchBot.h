@@ -3,6 +3,7 @@
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #include <thread>
+#include <map>
 
 // Modules
 #include "QuizModule.h"
@@ -55,6 +56,12 @@ namespace BotCore
 			string user_type = "";
 			string channel = "";
 			string mesageContents = "";
+		};
+
+		struct CommandData
+		{
+			string user_type = "";
+			string commandOptions = "";
 		};
 
 		struct QueueT
@@ -124,6 +131,7 @@ namespace BotCore
 
 		QuizModule* mQuizModule;
 		vector<BotModule*> mActiveBotModules;
+		map<const std::string, bool (BotModule::*)(const std::string&)> mRegisteredBotCommands;
 		bool mHasModuleToUpdate = false;
 	};
 }

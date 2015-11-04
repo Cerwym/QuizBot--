@@ -6,8 +6,10 @@
 QuizModule::QuizModule()
 {
 	mModuleName = "Quiz Module";
+
 	mIsGameRunning = false;
 }
+
 
 QuizModule::~QuizModule()
 {
@@ -15,8 +17,18 @@ QuizModule::~QuizModule()
 		Shutdown();
 }
 
+void QuizModule::SetModuleName()
+{
+	mModuleName = "QuizBot";
+}
+
+void QuizModule::Module_Register_Commands()
+{
+	RegisterModuleCommand("!quiz start", static_cast<bool (BotModule::*)(const std::string&)> (&QuizModule::Module_Start));
+}
+
 // TODO : Return available commands that we should listen to
-bool QuizModule::Init()
+bool QuizModule::Module_Init(const std::string& withOptions)
 {
 	// Open up file ModuleData\Questions\question_sets.txt
 	// parse each line as an available question set.
@@ -29,19 +41,15 @@ bool QuizModule::Init()
 	mRoundTime = 60;
 	
 	printf("Quizbot Activated\n");
+	
 	return mHasInitializedSuccessfully;
 }
 
-void QuizModule::SetModuleName()
-{
-	mModuleName = "QuizBot";
-}
-
-bool QuizModule::Module_Start()
+bool QuizModule::Module_Start(const std::string& withOptions)
 {
 	// Split mGivenOptionsString here or somewhere else? here for now.
 	std::string heyGivenString = mGivenOptions;
-	
+
 	// TEST value parameters
 	return StartGame("fallout.txt", mNumOfQuestions, mRoundTime);
 }
@@ -58,7 +66,7 @@ bool QuizModule::StartGame(const std::string& questionset, const int& numOfQuest
 	bool success = false;
 
 	if (!mHasInitializedSuccessfully)
-		success = Init();
+		return false;
 
 	if (mIsGameRunning == false)
 	{

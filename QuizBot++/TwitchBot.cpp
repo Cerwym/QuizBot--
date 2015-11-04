@@ -86,7 +86,7 @@ void TwitchBot::EvaluateConstructorFlags(int flags)
 	{
 		// This needs to be changed to create a new singleton rather than instantiate an object.
 		mQuizModule = new QuizModule();
-		mQuizModule->Init();
+		mQuizModule->Init(&mRegisteredBotCommands, string("NONE"));
 		mActiveBotModules.push_back(mQuizModule);
 	}
 
@@ -439,6 +439,39 @@ void TwitchBot::ParsePRIVMSG(string& data)
 //for now QB is the only module so we should not try and pre - optimized
 void TwitchBot::ParseBotCommandMessage(PrivMsgData &data)
 {
+	// read until ',' token has been read, BEFORE is command, AFTER is options
+	stringstream commandStream;
+	stringstream optionsStream;
+
+	CommandData commandData;
+
+	bool tokenRead = false;
+	for (size_t i = 0; i < data.mesageContents.length(); i++)
+	{
+		char c = data.mesageContents[i];
+
+		if (c == ',')
+		{
+			tokenRead = true;
+			i++;
+		}
+
+		if (tokenRead == false)
+			commandStream << data.mesageContents[i];
+		else
+			optionsStream << data.mesageContents[i];
+	}
+
+
+	commandData.user_type = data.user_type;
+	commandData.commandOptions = optionsStream.str();
+
+	//maybe change this
+	map<const std::string, bool (BotModule::*)(const std::string&)>::iterator botCommandIterator;
+
+	//botCommandIterator = mRegisteredBotCommands.find()
+
+
 
 	// strip all the data here and only concern ourself with characters AFTER 
 	if (data.mesageContents.find("!qb hello") != string::npos)
@@ -469,13 +502,6 @@ void TwitchBot::ParseBotCommandMessage(PrivMsgData &data)
 
 	else if (data.mesageContents.find("!quiz start") != string::npos)
 	{
-		// Refactor this, and all modules into something more maintainable
-		if (mQuizModule == NULL)
-		{
-			mQuizModule = new QuizModule;
-			mActiveBotModules.push_back(mQuizModule);
-		}
-
 		// temporary 
 		int roundTime = 60;
 		int numQuestions = 10;

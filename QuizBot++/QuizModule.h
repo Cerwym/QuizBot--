@@ -13,7 +13,6 @@ public:
 	QuizModule();
 	~QuizModule();
 
-	bool Init();
 	// Question Set to load, (is the user an admin), how many questions, how long each round should lasts
 	void Update();
 	void Pause();
@@ -30,7 +29,9 @@ public:
 
 protected:
 
-	bool Module_Start();
+	bool Module_Init(const std::string& withOptions);
+	bool Module_Start(const std::string& withOptions);
+	void Module_Register_Commands();
 
 private:
 
