@@ -428,9 +428,9 @@ void TwitchBot::ParsePRIVMSG(string& data)
 
 	else if (mQuizModule != 0)
 	{
-		if (mQuizModule->IsInitialized())
+		if (mQuizModule->IsGameRunning())
 		{
-			mQuizModule->ParseAnswer(data);
+			mQuizModule->ParseAnswer(msgPacket.mesageContents);
 		}
 	}
 	// Check to see if quizbot is running so that we can parse the message as an answer, if it's NOT running then proccess message as a command message
@@ -439,6 +439,8 @@ void TwitchBot::ParsePRIVMSG(string& data)
 //for now QB is the only module so we should not try and pre - optimized
 void TwitchBot::ParseBotCommandMessage(PrivMsgData &data)
 {
+
+	// strip all the data here and only concern ourself with characters AFTER 
 	if (data.mesageContents.find("!qb hello") != string::npos)
 	{
 		if (data.user_type == "mod" || data.user_type == "admin")
@@ -480,7 +482,8 @@ void TwitchBot::ParseBotCommandMessage(PrivMsgData &data)
 		stringstream ss;
 
 		// change the parameter start to be whatever the name is that was passed in twitch chat
-		if (mQuizModule->Start("fallout.txt", data.user_type, numQuestions, roundTime))
+		//if (mQuizModule->Start("fallout.txt", data.user_type, numQuestions, roundTime))
+		if (mQuizModule->Start(data.mesageContents))
 		{
 			ss << data.display_name << " has started a quiz, you will have " << roundTime << " seconds to answer a question, Good Luck!";
 			

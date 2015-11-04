@@ -14,6 +14,7 @@ QuizModule::~QuizModule()
 	if (!mHasShutDown)
 		Shutdown();
 }
+
 // TODO : Return available commands that we should listen to
 bool QuizModule::Init()
 {
@@ -23,6 +24,9 @@ bool QuizModule::Init()
 	mCurrentQuestion = 0;
 	mWorkingDirectory += "Questions\\";
 	mHasInitializedSuccessfully = CheckForQuestionSets("question_sets.txt");
+
+	mNumOfQuestions = 10;
+	mRoundTime = 60;
 	
 	printf("Quizbot Activated\n");
 	return mHasInitializedSuccessfully;
@@ -33,28 +37,36 @@ void QuizModule::SetModuleName()
 	mModuleName = "QuizBot";
 }
 
+bool QuizModule::Module_Start()
+{
+	// Split mGivenOptionsString here or somewhere else? here for now.
+	std::string heyGivenString = mGivenOptions;
+	
+	// TEST value parameters
+	return StartGame("fallout.txt", mNumOfQuestions, mRoundTime);
+}
+
 void QuizModule::Shutdown()
 {
 	mHasShutDown = true;
 	printf("Shutting down Quizbot...\n");
 }
 
-bool QuizModule::Start(const std::string& questionset, const std::string& userType, const int& numOfQuestions, const int& roundTime)
+bool QuizModule::StartGame(const std::string& questionset, const int& numOfQuestions, const int& roundTime)
 {
+	// split 
 	bool success = false;
 
 	if (!mHasInitializedSuccessfully)
 		success = Init();
+
 	if (mIsGameRunning == false)
 	{
-		if (userType == "mod" || userType == "admin")
-		{
-			success = ReadQuestionFile(questionset);
-			mRoundTime = roundTime;
-			mTimeAtRoundStart = steady_clock::now();
-			mIsGameRunning = success;
-			mMustRunEveryFrame = true;
-		}
+		success = ReadQuestionFile(questionset);
+		mRoundTime = roundTime;
+		mTimeAtRoundStart = steady_clock::now();
+		mIsGameRunning = success;
+		mMustRunEveryFrame = true;
 	}
 	else
 		printf("An attempt to start a quiz was made while one was already running, ignoring...\n");
@@ -80,22 +92,20 @@ void QuizModule::Update()
 	if (mIsGameRunning)
 	{
 		// What question are we on...
-		// How long left till the end of the next round...
-	
+		// How long left till the end of the next round...	
 		steady_clock::time_point currentlyElapsed = steady_clock::now();
 		mElapsedRoundTime = duration_cast<duration<double>>(currentlyElapsed - mTimeAtRoundStart);
-		printf("Elapsed Time... %f", mElapsedRoundTime);
 		if (mElapsedRoundTime.count() >= mRoundTime)
 		{
 			// Ask a new question.
-			//printf("Round time finished\n");
+			printf("Round time finished\n");
 		}
 	}
 }
 
 void QuizModule::ParseAnswer(const std::string& answerData)
 {
-	printf("Checking to see if this was a correct answer\n");
+	printf("Checking to see if '%s' was a correct answer\n", answerData.c_str());
 }
 
 bool QuizModule::ReadQuestionFile(const std::string& questionSetName)
@@ -132,6 +142,7 @@ bool QuizModule::ReadQuestionFile(const std::string& questionSetName)
 
 	if (dataToFill != 0)
 	{
+		int foundQuestions = 1;
 		std::stringstream fullPath;
 		fullPath << mWorkingDirectory << dataToFill->QuestionSetName;
 		std::ifstream infile(fullPath.str());
@@ -165,8 +176,11 @@ bool QuizModule::ReadQuestionFile(const std::string& questionSetName)
 				newInfo.Question = questionStream.str();
 				newInfo.Answer = answerStream.str();
 				dataToFill->Data.push_back(newInfo);
+				foundQuestions++;
 			}
 		}
+
+		dataToFill->AvailableQuestions = foundQuestions;
 
 		return true;
 	}

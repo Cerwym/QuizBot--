@@ -15,22 +15,26 @@ public:
 
 	bool Init();
 	// Question Set to load, (is the user an admin), how many questions, how long each round should lasts
-	bool Start(const std::string& questionset, const std::string& userType, const int& numOfQuestions, const int& roundTime);
-	void Shutdown();
-	void ParseAnswer(const std::string& answerData);
-	bool ReadQuestionFile(const std::string& questionSetName);
-	bool IsGameRunning(){ return mIsGameRunning; }
-
 	void Update();
 	void Pause();
 	void Resume(bool resetRoundTime);
+	void Shutdown();
+	
+	void ParseAnswer(const std::string& answerData);
+	bool ReadQuestionFile(const std::string& questionSetName);
+	bool IsGameRunning(){ return mIsGameRunning; }
 	// Start, Stop, Pause, Resume, GetScoreboard, GetAvailableCommands, Run
 
 	//Commands
 	// Help, Start(Admin), Stop(Admin), Pause(Admin), Resume(Admin)
 
+protected:
+
+	bool Module_Start();
+
 private:
 
+	bool StartGame(const std::string& questionset, const int& numOfQuestions, const int& roundTime);
 	bool CheckForQuestionSets(const std::string& filenameoflist);
 	void SetModuleName();
 
@@ -45,6 +49,7 @@ private:
 	{
 		std::string QuestionSetName = "NONE";
 		std::vector<QuestionInfo> Data;
+		int AvailableQuestions = 0;
 	};
 	
 	std::vector<QuestionData*> mAvailableQuestionSets;
@@ -55,8 +60,8 @@ private:
 
 	// If it's not running it's been paused or stopped.
 	bool mIsGameRunning;
-	int mRoundTime = 60;
-	int tempcomparison = 0;
+	int mRoundTime;
+	int mNumOfQuestions;
 
 	// scoreboard, question number, questions left, question data, timer.
 };
