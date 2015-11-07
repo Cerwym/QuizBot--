@@ -4,6 +4,7 @@
 #include <WS2tcpip.h>
 #include <thread>
 #include <map>
+#include "defines.h"
 
 // Modules
 #include "QuizModule.h"
@@ -56,12 +57,6 @@ namespace BotCore
 			string user_type = "";
 			string channel = "";
 			string mesageContents = "";
-		};
-
-		struct CommandData
-		{
-			string user_type = "";
-			string commandOptions = "";
 		};
 
 		struct QueueT
@@ -131,7 +126,11 @@ namespace BotCore
 
 		QuizModule* mQuizModule;
 		vector<BotModule*> mActiveBotModules;
-		map<const std::string, bool (BotModule::*)(const std::string&)> mRegisteredBotCommands;
+		
+		// The actual location of the registered commands map.
+		map<const std::string, bool (BotModule::*)(CommandData)> mRegisteredBotCommands;
+		
+		
 		bool mHasModuleToUpdate = false;
 	};
 }

@@ -15,8 +15,6 @@ public:
 
 	// Question Set to load, (is the user an admin), how many questions, how long each round should lasts
 	void Update();
-	void Pause();
-	void Resume(bool resetRoundTime);
 	void Shutdown();
 	
 	void ParseAnswer(const std::string& answerData);
@@ -29,8 +27,13 @@ public:
 
 protected:
 
-	bool Module_Init(const std::string& withOptions);
-	bool Module_Start(const std::string& withOptions);
+	bool Module_Init(CommandData commandData);
+
+	bool Module_Start(CommandData commandData);
+	bool Module_Pause(CommandData commandData);
+	bool Module_Resume(CommandData commandData);
+	bool Module_Stop(CommandData commandData);
+
 	void Module_Register_Commands();
 
 private:

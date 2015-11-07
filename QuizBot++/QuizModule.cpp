@@ -24,11 +24,14 @@ void QuizModule::SetModuleName()
 
 void QuizModule::Module_Register_Commands()
 {
-	RegisterModuleCommand("!quiz start", static_cast<bool (BotModule::*)(const std::string&)> (&QuizModule::Module_Start));
+	RegisterModuleCommand("!quiz start", static_cast<bool (BotModule::*)(CommandData)> (&QuizModule::Module_Start));
+	RegisterModuleCommand("!quiz pause", static_cast<bool (BotModule::*)(CommandData)> (&QuizModule::Module_Pause));
+	RegisterModuleCommand("!quiz resume", static_cast<bool (BotModule::*)(CommandData)> (&QuizModule::Module_Resume));
+	RegisterModuleCommand("!quiz stop", static_cast<bool (BotModule::*)(CommandData)> (&QuizModule::Module_Stop));
 }
 
 // TODO : Return available commands that we should listen to
-bool QuizModule::Module_Init(const std::string& withOptions)
+bool QuizModule::Module_Init(CommandData commandData)
 {
 	// Open up file ModuleData\Questions\question_sets.txt
 	// parse each line as an available question set.
@@ -45,13 +48,26 @@ bool QuizModule::Module_Init(const std::string& withOptions)
 	return mHasInitializedSuccessfully;
 }
 
-bool QuizModule::Module_Start(const std::string& withOptions)
+bool QuizModule::Module_Start(CommandData commandData)
 {
+	// TODO : this can be improved so that it comes redundant.
+	if (!mHasInitializedSuccessfully)
+		Module_Init(CommandData()); // Pass in empty data.
+
+
+	// Split data from @param commandData and pass it to StartGame()
+
 	// Split mGivenOptionsString here or somewhere else? here for now.
 	std::string heyGivenString = mGivenOptions;
 
 	// TEST value parameters
 	return StartGame("fallout.txt", mNumOfQuestions, mRoundTime);
+}
+
+bool QuizModule::Module_Stop(CommandData commandData)
+{
+	printf("QuizModule::Module_Stop() STUB\n");
+	return true;
 }
 
 void QuizModule::Shutdown()
@@ -70,6 +86,7 @@ bool QuizModule::StartGame(const std::string& questionset, const int& numOfQuest
 
 	if (mIsGameRunning == false)
 	{
+		printf("Starting quiz...\n");
 		success = ReadQuestionFile(questionset);
 		mRoundTime = roundTime;
 		mTimeAtRoundStart = steady_clock::now();
@@ -82,17 +99,21 @@ bool QuizModule::StartGame(const std::string& questionset, const int& numOfQuest
 	return success;
 }
 
-void QuizModule::Pause()
+bool QuizModule::Module_Pause(CommandData data)
 {
 	mIsGameRunning = false;
 	mMustRunEveryFrame = false;
+
+	return true;
 }
 
-void QuizModule::Resume(bool resetRoundTime)
+bool QuizModule::Module_Resume(CommandData data)
 {
 	// If the param is true, reset the active round time
 	mIsGameRunning = false;
 	mMustRunEveryFrame = false;
+
+	return true;
 }
 
 void QuizModule::Update()
@@ -193,6 +214,7 @@ bool QuizModule::ReadQuestionFile(const std::string& questionSetName)
 		return true;
 	}
 
+	printf("Opening the question file has failed\n");
 	return false;
 }
 
@@ -220,6 +242,8 @@ bool QuizModule::CheckForQuestionSets(const std::string& filenameoflist)
 			someData = true;
 		}
 	}
+	else
+		printf("Opening the question sets file has failed\n");
 	
 	return someData;
 }

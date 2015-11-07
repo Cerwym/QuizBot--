@@ -8,7 +8,7 @@ BotModule::BotModule()
 	mModuleCommands = 0;
 }
 
-bool BotModule::Init(std::map<const std::string, bool (BotModule::*)(const std::string&)>* commandList, std::string& commandData)
+bool BotModule::Init(std::map<const std::string, bool (BotModule::*)(CommandData commandData)>* commandList, CommandData commandData)
 {
 	mModuleCommands = commandList;
 
@@ -19,19 +19,13 @@ bool BotModule::Init(std::map<const std::string, bool (BotModule::*)(const std::
 // Start a module with the given command string
 // We can change this to check to see if any data exists after the command AND check to see if the data matches the bots registered commands
 // This will return TRUE or FALSE depending on the modules startup logic.
-bool BotModule::Start(const std::string& withOptionsString)
+bool BotModule::Start(CommandData commandData)
 {
-	mGivenOptions = withOptionsString;
-	return Module_Start(mGivenOptions);
+	return Module_Start(commandData);
 }
 
-/*
-bool BotModule::RegisterModuleCommand(const std::string& commandString, CommandFunction commandFunction)
+// Receive a pointer to a function that matches the format of returning a bool while having a CommandData struct as an argument
+void BotModule::RegisterModuleCommand(const std::string& commandFunctionString, bool (BotModule:: *moduleFunction)(CommandData))
 {
-
-
-	//mCommandMap.insert(CommandMap::value_type(commandString, commandFunction));
-
-	return true;
+	mModuleCommands->insert(std::make_pair(commandFunctionString, moduleFunction));
 }
-*/

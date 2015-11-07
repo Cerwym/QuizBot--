@@ -1,17 +1,10 @@
 #include <string>
 #include <map>
+#include "defines.h"
 
 using namespace std;
 class BotModule
 {
-
-private:
-
-	struct CommandData
-	{
-		string user_type = "";
-		string command = "";
-	};
 
 public:
 
@@ -22,35 +15,32 @@ public:
 	// When adding in the commands, we should check to see if ANY of these command codes have been registered, if they have DO NOT add the command to the list and warn the user.
 	// When interfacing with the (planned) web interface, this should also be output to the user.
 
+
 	BotModule();
 	~BotModule(){}
-	virtual bool Init(std::map<const std::string, bool (BotModule::*)(const std::string&)>* commandList, std::string& commandData);
-	virtual void Shutdown() = 0;
-	virtual void Update() = 0;
-	bool Start(const std::string& withOptions);
+	bool Init(std::map<const std::string, bool (BotModule::*)(CommandData)>* commandList,CommandData commandData);
+	virtual void Shutdown(){};
+	virtual void Update(){};
+	bool Start(CommandData commandData);
 
-	virtual bool MustRunEveryFrame() final { return mMustRunEveryFrame; } // Disallow an inherited module to use override this function
+	virtual bool MustRunEveryFrame() final { return mMustRunEveryFrame; }
 	bool IsInitialized(){ return mHasInitializedSuccessfully; }
 	
 	std::string GetModuleName(){ return mModuleName; }
 
 protected:
 
-	virtual bool Module_Init(const std::string& withOptions) = 0;
-	virtual bool Module_Start(const std::string& withOptions) = 0;
-	virtual void Module_Register_Commands() = 0;
+	virtual void Module_Register_Commands(){};
+	virtual bool Module_Init(CommandData commandData){ return true; };
+	virtual bool Module_Start(CommandData commandData){ return true; };
+	virtual bool Module_Pause(CommandData commandData){ return true; };
+	virtual bool Module_Resume(CommandData commandData){ return true; };
+	virtual bool Module_Stop(CommandData commandData){ return true; };
 	
-	void RegisterModuleCommand(const std::string& commandFunctionString, bool (BotModule:: *moduleFunction)(const std::string&))
-	{
-		mModuleCommands->insert(std::make_pair(commandFunctionString, moduleFunction));
-	}
-	
+	void RegisterModuleCommand(const std::string& commandFunctionString, bool (BotModule:: *moduleFunction)(CommandData));
 	bool mHasInitializedSuccessfully = false;
 	bool mHasShutDown = false;
 	bool mMustRunEveryFrame = false;
-
-	// I would like to introduce a function here that will read in a 'Module File' in a serialize format to reduce magic values and non-transparency in regards to module conventions
-	// boolParseModuleFile()
 
 	std::string mModuleName ="";
 	std::string mWorkingDirectory;
@@ -58,5 +48,5 @@ protected:
 
 private: 
 
-	std::map<const std::string, bool (BotModule::*)(const std::string&)>* mModuleCommands;
+	std::map<const std::string, bool (BotModule::*)(CommandData)>* mModuleCommands;
 };

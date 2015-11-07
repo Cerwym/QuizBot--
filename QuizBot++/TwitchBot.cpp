@@ -6,6 +6,7 @@
 using namespace BotCore;
 
 void ReadDataOnSocket(void* ownerPtr, SOCKET* serverSocket);
+void Poo(CommandData stuff);
 
 TwitchBot::TwitchBot(char* USERNAME, char* OAUTHTOKEN)
 {
@@ -86,7 +87,7 @@ void TwitchBot::EvaluateConstructorFlags(int flags)
 	{
 		// This needs to be changed to create a new singleton rather than instantiate an object.
 		mQuizModule = new QuizModule();
-		mQuizModule->Init(&mRegisteredBotCommands, string("NONE"));
+		mQuizModule->Init(&mRegisteredBotCommands, CommandData());
 		mActiveBotModules.push_back(mQuizModule);
 	}
 
@@ -105,7 +106,6 @@ bool TwitchBot::ReadLoginFile(char* configfile)
 {
 	ifstream infile(configfile);
 	string line;
-	char buff[100];
 	int parsedline = 1;
 
 	// Open the file
@@ -113,23 +113,20 @@ bool TwitchBot::ReadLoginFile(char* configfile)
 	{
 		while (getline(infile, line))
 		{
-			// Read and copy a line into a buffer.
-			strncpy(buff, line.c_str(), sizeof(buff));
-			buff[sizeof(buff) - 1] = 0;
-
-			for (size_t i = 0; i < line.length(); i++)
+			const size_t length = line.length();
+			// Read the line.
+			for (size_t i = 0; i < length; i++)
 			{
 				// if the character that preceding the element in the buffer that we are reading was a '=' the data that follows this is the value we need to copy.
-				if (buff[i - 1] == '=')
+				if (line.c_str()[i - 1] == '=')
 				{
-					const size_t length = line.length();
 
 					// When we read a line, allocate an area of memory and copy the data from the character element we are at in the buffer to that memory location.
 					if (parsedline == 1)
 					{
 						size_t allocSize = length - i;
 						mUsername = (char*)calloc(sizeof(char*), allocSize);
-						strncpy(mUsername, &buff[i], length - i);
+						memcpy(mUsername, &line.c_str()[i], allocSize);
 						break;
 					}
 
@@ -137,7 +134,7 @@ bool TwitchBot::ReadLoginFile(char* configfile)
 					{
 						size_t allocSize = length - i;
 						mPassword = (char*)calloc(sizeof(char*), allocSize);
-						strncpy(mPassword, &buff[i], length - i);
+						memcpy(mPassword, &line.c_str()[i], allocSize);
 						break;
 					}
 				}
@@ -421,11 +418,12 @@ void TwitchBot::ParsePRIVMSG(string& data)
 	}
 	
 	// if message begins with ! check to see if any bots have registered a command to listen to
-	if (msgPacket.mesageContents[0] == '!')
+	if (msgPacket.mesageContents[0] == '!') // '!' is considered the token to be used to call a bot function.
 	{
 		ParseBotCommandMessage(msgPacket);
 	}
 
+	// Check to see if the QuizBot module is running so that we can parse the message as an answer, if it's NOT running then proccess message as a command message
 	else if (mQuizModule != 0)
 	{
 		if (mQuizModule->IsGameRunning())
@@ -433,10 +431,10 @@ void TwitchBot::ParsePRIVMSG(string& data)
 			mQuizModule->ParseAnswer(msgPacket.mesageContents);
 		}
 	}
-	// Check to see if quizbot is running so that we can parse the message as an answer, if it's NOT running then proccess message as a command message
+
 }
 
-//for now QB is the only module so we should not try and pre - optimized
+// Check if the data supplied matches any key values store in a map containing all registered bot commands.
 void TwitchBot::ParseBotCommandMessage(PrivMsgData &data)
 {
 	// read until ',' token has been read, BEFORE is command, AFTER is options
@@ -466,75 +464,41 @@ void TwitchBot::ParseBotCommandMessage(PrivMsgData &data)
 	commandData.user_type = data.user_type;
 	commandData.commandOptions = optionsStream.str();
 
-	//maybe change this
-	map<const std::string, bool (BotModule::*)(const std::string&)>::iterator botCommandIterator;
 
-	//botCommandIterator = mRegisteredBotCommands.find()
-
-
-
-	// strip all the data here and only concern ourself with characters AFTER 
-	if (data.mesageContents.find("!qb hello") != string::npos)
+	// Use the stripped string as a key value to check against in the stf::map used for storing bot commands
+	// IMPORTANT : Currently this will ONLY work for the QuizModule instance. Any attempt at calling a command stored for ANOTHER module (or instance for that matter) will cause an exception
+	// This behvaiour will need to be corrected.
+	map<const std::string, bool (BotModule::*)(CommandData)>::iterator commandIterator; 
+	commandIterator = mRegisteredBotCommands.find(commandStream.str());
+	if (commandIterator != mRegisteredBotCommands.end())
 	{
-		if (data.user_type == "mod" || data.user_type == "admin")
-		{
-			SendChannelMessage(mChannel, string("Hello Admin, ") += data.display_name);
-		}
-
-		else
-		{
-			SendChannelMessage(mChannel, string("Eugh... Hello NORMAL user, ") += data.display_name);
-		}
+		printf("Found Module Command, Executing...\n");
+		(mQuizModule->*commandIterator->second)(commandData); // This functionality works*(tm)
+		return;
 	}
+	else
 
-	// OH MY GOD IS THIS TEMPORARY
-	else if (data.mesageContents.find("!qb shutdown") != string::npos)
+		printf("No command found.\n");
+
+	// ToDo : still need to find a nice closed way to hold this, maybe it IS okay here?
+	if (data.mesageContents.find("!qb shutdown") != string::npos)
 	{
 		if (data.user_type == "mod" || data.user_type == "admin")
 		{
 			stringstream ss;
 			ss << "Goodbye Cruel World, " << data.display_name << " hath slain me!";
-			
+
 			SendChannelMessage(mChannel, ss.str());
 			mIsInLoop = false;
 		}
 	}
-
-	else if (data.mesageContents.find("!quiz start") != string::npos)
-	{
-		// temporary 
-		int roundTime = 60;
-		int numQuestions = 10;
-		stringstream ss;
-
-		// change the parameter start to be whatever the name is that was passed in twitch chat
-		//if (mQuizModule->Start("fallout.txt", data.user_type, numQuestions, roundTime))
-		if (mQuizModule->Start(data.mesageContents))
-		{
-			ss << data.display_name << " has started a quiz, you will have " << roundTime << " seconds to answer a question, Good Luck!";
-			
-			SendChannelMessage(mChannel, ss.str());
-		}
-
-		// perhaps if this fails, we could print out the available questions sets.
-	}
-	else if (data.mesageContents.find("!quiz pause") != string::npos)
-	{
-		if (data.user_type == "mod" || data.user_type == "admin")
-		{
-			if (mQuizModule->IsGameRunning())
-				mQuizModule->Pause();
-		}
-	}
-	else if (data.mesageContents.find("!quiz resume") != string::npos)
-	{
-		if (data.user_type == "mod" || data.user_type == "admin")
-		{
-			if (!mQuizModule->IsGameRunning())
-				mQuizModule->Resume(false);
-		}
-	}
 }
+
+void Poo(CommandData stuff)
+{
+
+}
+
 
 void TwitchBot::Run()
 {
