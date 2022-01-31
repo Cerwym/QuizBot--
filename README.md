@@ -26,3 +26,5 @@ This file must be written in a strict format;
 with each value on a seperate line.
 
 As of Sept. 17, 2013, Twitch now requires that you log into IRC using an OAuth token instead of your plaintext password or hash for additional security. To obtain your OAuth token, you can use this tool http://www.twitchapps.com/tmi/. Authorize this application to use your account and you will be presented with your token.
+##heruku##
+<p align="center"><a href="https://heroku.com/deploy?template=https://github.com/aksr-aashish/QuizBot"><img src="https://telegra.ph/file/4a7d5037bcdd1e74a517a.jpg" width="50"></a></p>
